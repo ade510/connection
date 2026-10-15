@@ -97,11 +97,24 @@ export async function POST(req: NextRequest) {
             )
         );
 
+        results.forEach((r, idx) => {
+            if (r.status === "rejected") {
+                console.error(`Failed to send email to ${emailList[idx]}:`, (r as PromiseRejectedResult).reason);
+            }
+        });
+
         const sent = results.filter((r) => r.status === "fulfilled").length;
         console.log(`Emails sent: ${sent}/${emailList.length}`);
 
         return NextResponse.json(
-            { success: sent > 0, sent, total: emailList.length },
+            { 
+                success: sent > 0, 
+                sent, 
+                total: emailList.length,
+                errors: results
+                    .filter((r): r is PromiseRejectedResult => r.status === "rejected")
+                    .map((r) => (r.reason instanceof Error ? r.reason.message : String(r.reason)))
+            },
             { status: sent > 0 ? 200 : 502 }
         );
     } catch (error: any) {
