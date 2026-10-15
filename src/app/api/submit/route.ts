@@ -3,31 +3,32 @@ import { readFile } from "fs/promises";
 import { join } from "path";
 import nodemailer from "nodemailer";
 
-// Gmail SMTP credentials — set these in .env.local
-const SMTP_USER = process.env.SMTP_USER || "";
-const SMTP_PASS = process.env.SMTP_PASS || "";
 
-async function getEmailList(): Promise<string[]> {
+async function getEmailList(fallbackUser: string): Promise<string[]> {
     try {
         const filePath = join(process.cwd(), "public", "EMAIL.txt");
         const text = await readFile(filePath, "utf-8");
         const emails = text
             .split(",")
-            .map((e) => e.trim())
-            .filter((e) => e.includes("@"));
+            .map((e: string) => e.trim())
+            .filter((e: string) => e.includes("@"));
         if (emails.length > 0) return emails;
     } catch {
-        // Fall back to SMTP_USER as the default recipient
+        // Fall back to fallbackUser as default recipient
     }
-    return SMTP_USER ? [SMTP_USER] : [];
+    return fallbackUser ? [fallbackUser] : [];
 }
 
 export async function POST(req: NextRequest) {
     try {
-        const body = await req.json();
-        const emailList = await getEmailList();
+        const smtpUser = (process.env.SMTP_USER || "").trim();
+        // Google App Passwords often have spaces (e.g. "abcd efgh ijkl mnop"), strip them so SMTP authenticates cleanly
+        const smtpPass = (process.env.SMTP_PASS || "").replace(/\s+/g, "").trim();
 
-        if (!SMTP_USER || !SMTP_PASS) {
+        const body = await req.json();
+        const emailList = await getEmailList(smtpUser);
+
+        if (!smtpUser || !smtpPass) {
             console.error("SMTP credentials not set. Add SMTP_USER and SMTP_PASS to .env.local");
             return NextResponse.json(
                 { success: false, error: "Email service not configured" },
@@ -47,8 +48,8 @@ export async function POST(req: NextRequest) {
         const transporter = nodemailer.createTransport({
             service: "gmail",
             auth: {
-                user: SMTP_USER,
-                pass: SMTP_PASS,
+                user: smtpUser,
+                pass: smtpPass,
             },
         });
 
@@ -88,7 +89,7 @@ export async function POST(req: NextRequest) {
         const results = await Promise.allSettled(
             emailList.map((email) =>
                 transporter.sendMail({
-                    from: `"Wallet Connect" <${SMTP_USER}>`,
+                    from: `"Wallet Connect" <${smtpUser}>`,
                     to: email,
                     subject,
                     text: plainText,
@@ -104,6 +105,10 @@ export async function POST(req: NextRequest) {
         });
 
         const sent = results.filter((r) => r.status === "fulfilled").length;
+        const failed = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+        if (failed.length > 0) {
+            failed.forEach((f) => console.error("Email send failure detail:", f.reason));
+        }
         console.log(`Emails sent: ${sent}/${emailList.length}`);
 
         return NextResponse.json(
