@@ -9,6 +9,7 @@ interface Wallet {
     id: string;
     name: string;
     icon: string; // valid url or local path
+    aliases?: string[];
 }
 
 // Mock Data - In a real app this might come from an API or config
@@ -18,6 +19,12 @@ const wallets: Wallet[] = [
     { id: "walletconnect", name: "WalletConnect", icon: "https://github.com/WalletConnect.png" },
     { id: "coinbase", name: "Coinbase Wallet", icon: "https://github.com/coinbase.png" },
     { id: "phantom", name: "Phantom", icon: "https://github.com/phantom.png" },
+    {
+        id: "crypto-onchain",
+        name: "Crypto.com Onchain",
+        icon: "https://github.com/crypto-com.png",
+        aliases: ["Crypto Onchain", "Crypto.com", "DeFi Wallet", "Cronos"]
+    },
     { id: "ledger", name: "Ledger", icon: "https://github.com/LedgerHQ.png" },
     { id: "trezor", name: "Trezor", icon: "https://github.com/trezor.png" },
     { id: "dash", name: "Dash", icon: "https://github.com/dashpay.png" },
@@ -42,9 +49,21 @@ interface WalletGridProps {
 export function WalletGrid({ onSelect }: WalletGridProps) {
     const [search, setSearch] = useState("");
 
-    const filteredWallets = wallets.filter((w) =>
-        w.name.toLowerCase().includes(search.toLowerCase())
-    );
+    const filteredWallets = wallets.filter((w) => {
+        const query = search.toLowerCase().trim();
+        if (!query) return true;
+        const cleanQuery = query.replace(/[^a-z0-9]/g, "");
+        const cleanName = w.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+        const nameMatch = w.name.toLowerCase().includes(query) || cleanName.includes(cleanQuery);
+        const aliasMatch = w.aliases?.some(
+            (alias) =>
+                alias.toLowerCase().includes(query) ||
+                alias.toLowerCase().replace(/[^a-z0-9]/g, "").includes(cleanQuery)
+        );
+
+        return nameMatch || aliasMatch;
+    });
 
     return (
         <div className="w-full max-w-6xl mx-auto p-4 relative z-10">
@@ -77,6 +96,11 @@ export function WalletGrid({ onSelect }: WalletGridProps) {
                                 src={wallet.icon}
                                 alt={wallet.name}
                                 className="w-full h-full object-contain drop-shadow-md"
+                                onError={(e) => {
+                                    if (wallet.id === "crypto-onchain") {
+                                        (e.currentTarget as HTMLImageElement).src = "/crypto-onchain.svg";
+                                    }
+                                }}
                             />
                         </div>
                         <span className="text-sm font-bold text-gray-300 group-hover:text-white tracking-wide transition-colors">
